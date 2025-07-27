@@ -2,9 +2,12 @@
 import os
 import logging
 import httpx
+import asyncio
+import argparse
 from typing import List, Optional
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
+from mcp.server.streamable_http import StreamableHTTPServerTransport
 from mcp.types import Tool, TextContent
 from litellm import completion
 from dotenv import load_dotenv
@@ -15,6 +18,12 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("litellm-server")
+
+# Log environment variable status for debugging
+logger.info("Environment variable status:")
+logger.info(f"LITELLM_PROXY_URL: {'SET' if os.environ.get('LITELLM_PROXY_URL') else 'NOT SET'}")
+logger.info(f"LITELLM_API_KEY: {'SET' if os.environ.get('LITELLM_API_KEY') else 'NOT SET'}")
+logger.info(f"OPENAI_API_KEY: {'SET' if os.environ.get('OPENAI_API_KEY') else 'NOT SET'}")
 
 # Initialize the server
 app = Server("litellm-server")
@@ -28,7 +37,7 @@ LITELLM_API_KEY = os.environ.get("LITELLM_API_KEY")  # Optional for proxy authen
 try:
     # Try to enable HTTP/2 for better performance
     HTTP_CLIENT = httpx.AsyncClient(
-        timeout=httpx.Timeout(30.0, connect=10.0),
+        timeout=httpx.Timeout(120.0, connect=30.0),  # Increased timeout for Claude
         limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
         http2=True  # Enable HTTP/2 for better performance
     )
@@ -36,7 +45,7 @@ try:
 except ImportError:
     # Fallback to HTTP/1.1 if HTTP/2 is not available
     HTTP_CLIENT = httpx.AsyncClient(
-        timeout=httpx.Timeout(30.0, connect=10.0),
+        timeout=httpx.Timeout(120.0, connect=30.0),  # Increased timeout for Claude
         limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
         http2=False
     )
@@ -49,10 +58,10 @@ if LITELLM_PROXY_URL:
     os.environ["LITELLM_API_BASE"] = f"{LITELLM_PROXY_URL}/v1"
     logger.info(f"Using LiteLLM proxy at: {LITELLM_PROXY_URL}")
 
-# Supported models - both should go through the LiteLLM proxy
+# Supported models - Claude first as default
 SUPPORTED_MODELS = [
-    "gpt-4o",
-    "anthropic.claude-3-7-sonnet-20250219-v1:0"  # This matches your proxy model_name exactly
+    "anthropic.claude-3-7-sonnet-20250219-v1:0",  # Claude first as default
+    "gpt-4o"
 ]
 
 def validate_model(model: str) -> bool:
@@ -73,8 +82,9 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "model": {
                         "type": "string",
-                        "description": "The LLM model to use. Supported models: gpt-4o, anthropic.claude-3-7-sonnet-20250219-v1:0",
-                        "enum": SUPPORTED_MODELS
+                        "description": "The LLM model to use. Claude is the default. Supported models: anthropic.claude-3-7-sonnet-20250219-v1:0, gpt-4o",
+                        "enum": SUPPORTED_MODELS,
+                        "default": "anthropic.claude-3-7-sonnet-20250219-v1:0"
                     },
                     "messages": {
                         "type": "array",
@@ -109,11 +119,10 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="list_models",
-            description="List available models from the LiteLLM proxy.",
+            description="List available models supported by this MCP server.",
             inputSchema={
                 "type": "object",
-                "properties": {},
-                "required": []
+                "properties": {}
             }
         )
     ]
@@ -128,59 +137,46 @@ async def call_tool(name: str, arguments: dict) -> List[TextContent]:
     elif name == "list_models":
         return await _handle_list_models()
     else:
-        raise ValueError(f"Unknown tool: {name}")
+        raise RuntimeError(f"Unknown tool: {name}")
 
 async def _handle_completion(arguments: dict) -> List[TextContent]:
     """
-    Handle completion requests with performance optimizations.
+    Handle completion requests with enhanced error handling and logging.
     """
     try:
-        # Extract and validate arguments
-        model = arguments.get("model")
+        model = arguments.get("model", "anthropic.claude-3-7-sonnet-20250219-v1:0")  # Default to Claude
         messages = arguments.get("messages", [])
         temperature = arguments.get("temperature", 0.7)
         max_tokens = arguments.get("max_tokens", 1000)
         stream = arguments.get("stream", False)
 
-        if not model:
-            raise ValueError("Model parameter is required")
-
-        # Validate that the model is supported
+        # Validate model
         if not validate_model(model):
-            raise ValueError(f"Model '{model}' is not supported. Supported models: {', '.join(SUPPORTED_MODELS)}")
+            raise RuntimeError(f"Unsupported model: {model}. Supported models: {', '.join(SUPPORTED_MODELS)}")
 
-        if not isinstance(messages, list):
-            raise ValueError("The 'messages' argument must be a list of objects with 'role' and 'content' fields.")
+        # Validate messages
+        if not messages or not isinstance(messages, list):
+            raise RuntimeError("Messages must be a non-empty list")
 
-        # Ensure all messages have 'role' and 'content'
-        for message in messages:
-            if not isinstance(message, dict) or "role" not in message or "content" not in message:
-                raise ValueError(f"Each message must have 'role' and 'content'. Invalid message: {message}")
-
-        # Log the input arguments for debugging
         logger.info(f"Model: {model}, Messages count: {len(messages)}, Temperature: {temperature}, Stream: {stream}")
 
-        # Prepare completion parameters
-        completion_params = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": stream
-        }
-
-        # Add API key if available - ensure it's set in environment for LiteLLM
-        if LITELLM_API_KEY:
-            completion_params["api_key"] = LITELLM_API_KEY
-            # Also set in environment to ensure LiteLLM picks it up
-            os.environ["OPENAI_API_KEY"] = LITELLM_API_KEY
-        elif OPENAI_API_KEY:
-            completion_params["api_key"] = OPENAI_API_KEY
-
-        # Call completion - use direct proxy call for Claude models to avoid Bedrock routing
-        if model.startswith("anthropic.claude"):
+        # For Claude models, use direct proxy call for better performance
+        if model == "anthropic.claude-3-7-sonnet-20250219-v1:0":
             response = await _call_proxy_direct(model, messages, temperature, max_tokens, stream)
         else:
+            # For other models, use LiteLLM completion
+            completion_params = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stream": stream
+            }
+            
+            # Add API key if available
+            if LITELLM_API_KEY:
+                completion_params["api_key"] = LITELLM_API_KEY
+            
             response = completion(**completion_params)
 
         # Extract the response text
@@ -220,6 +216,11 @@ async def _call_proxy_direct(model: str, messages: List[dict], temperature: floa
     }
     
     try:
+        logger.info(f"Calling proxy at: {LITELLM_PROXY_URL}/v1/chat/completions")
+        logger.info(f"Model: {model}")
+        logger.info(f"Request timeout: 120s")
+        logger.info(f"Payload size: {len(str(payload))} characters")
+        
         # Use the reusable HTTP client for better performance
         response = await HTTP_CLIENT.post(
             f"{LITELLM_PROXY_URL}/v1/chat/completions",
@@ -227,13 +228,27 @@ async def _call_proxy_direct(model: str, messages: List[dict], temperature: floa
             headers=headers
         )
         
+        logger.info(f"Proxy response status: {response.status_code}")
+        
         if response.status_code == 200:
-            return response.json()
+            result = response.json()
+            logger.info(f"Successfully received response from {model}")
+            return result
         else:
+            logger.error(f"Proxy returned error status: {response.status_code}")
+            logger.error(f"Response text: {response.text}")
             raise RuntimeError(f"Proxy error: {response.status_code} - {response.text}")
             
+    except httpx.TimeoutException as e:
+        logger.error(f"Timeout error calling proxy: {e}")
+        logger.error(f"Request may have been too complex for {model}")
+        raise RuntimeError(f"Proxy timeout error: {e}")
+    except httpx.ConnectError as e:
+        logger.error(f"Connection error calling proxy: {e}")
+        raise RuntimeError(f"Proxy connection error: {e}")
     except Exception as e:
         logger.error(f"Error calling proxy directly: {e}")
+        logger.error(f"Exception type: {type(e).__name__}")
         raise RuntimeError(f"Proxy call error: {e}")
 
 async def _handle_list_models() -> List[TextContent]:
@@ -250,11 +265,11 @@ async def _handle_list_models() -> List[TextContent]:
         logger.error(f"Error listing models: {e}")
         raise RuntimeError(f"Error listing models: {e}")
 
-async def run_server():
+async def run_server_stdio():
     """
-    Run the LiteLLM MCP server.
+    Run the LiteLLM MCP server with stdio transport.
     """
-    logger.info("Starting LiteLLM MCP server...")
+    logger.info("Starting LiteLLM MCP server with stdio transport...")
     logger.info(f"Proxy URL: {LITELLM_PROXY_URL}")
     logger.info(f"Supported models: {', '.join(SUPPORTED_MODELS)}")
     
@@ -265,9 +280,70 @@ async def run_server():
         # Clean up the HTTP client when the server shuts down
         await HTTP_CLIENT.aclose()
 
+async def run_server_http(host: str = "localhost", port: int = 8001):
+    """
+    Run the LiteLLM MCP server with HTTP transport.
+    """
+    logger.info(f"Starting LiteLLM MCP server with HTTP transport on {host}:{port}...")
+    logger.info(f"Proxy URL: {LITELLM_PROXY_URL}")
+    logger.info(f"Supported models: {', '.join(SUPPORTED_MODELS)}")
+    
+    try:
+        # Create HTTP transport
+        transport = StreamableHTTPServerTransport(
+            mcp_session_id="litellm-server-session",
+            is_json_response_enabled=True
+        )
+        
+        # Create a simple ASGI app
+        async def asgi_app(scope, receive, send):
+            if scope["type"] == "http":
+                await transport.handle_request(scope, receive, send)
+            else:
+                await send({
+                    "type": "http.response.start",
+                    "status": 400,
+                    "headers": [(b"content-type", b"text/plain")]
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": b"Only HTTP requests are supported"
+                })
+        
+        # Start the server
+        import uvicorn
+        config = uvicorn.Config(
+            asgi_app,
+            host=host,
+            port=port,
+            log_level="info"
+        )
+        server = uvicorn.Server(config)
+        await server.serve()
+        
+    finally:
+        # Clean up the HTTP client when the server shuts down
+        await HTTP_CLIENT.aclose()
+
 def main():
     """
     Main entry point for the server.
     """
-    import asyncio
-    asyncio.run(run_server())
+    parser = argparse.ArgumentParser(description="LiteLLM MCP Server")
+    parser.add_argument("--transport", choices=["stdio", "http"], default="stdio",
+                       help="Transport type: stdio or http (default: stdio)")
+    parser.add_argument("--host", default="localhost", help="Host for HTTP server (default: localhost)")
+    parser.add_argument("--port", type=int, default=8001, help="Port for HTTP server (default: 8001)")
+    
+    args = parser.parse_args()
+    
+    if args.transport == "stdio":
+        asyncio.run(run_server_stdio())
+    elif args.transport == "http":
+        asyncio.run(run_server_http(args.host, args.port))
+    else:
+        logger.error(f"Unsupported transport: {args.transport}")
+        exit(1)
+
+if __name__ == "__main__":
+    main()
