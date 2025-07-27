@@ -13,22 +13,27 @@ This guide explains how to deploy the LiteLLM MCP server on an Ubuntu ARM64 serv
 
 2. **Run the installation script:**
    ```bash
-   # Option A: Robust installation (recommended for ARM64)
+   # Option A: ARM64-specific installation (recommended for ARM64 Ubuntu)
+   curl -O https://raw.githubusercontent.com/dinhdobathi1992/mcp-server-litellm/main/deploy/arm64-install.sh
+   chmod +x arm64-install.sh
+   ./arm64-install.sh
+   
+   # Option B: Robust installation
    curl -O https://raw.githubusercontent.com/dinhdobathi1992/mcp-server-litellm/main/deploy/robust-install.sh
    chmod +x robust-install.sh
    ./robust-install.sh
    
-   # Option B: Quick setup
+   # Option C: Quick setup
    curl -O https://raw.githubusercontent.com/dinhdobathi1992/mcp-server-litellm/main/deploy/quick-setup.sh
    chmod +x quick-setup.sh
    ./quick-setup.sh
    
-   # Option C: Simple installation (if others fail)
+   # Option D: Simple installation (if others fail)
    curl -O https://raw.githubusercontent.com/dinhdobathi1992/mcp-server-litellm/main/deploy/simple-install.sh
    chmod +x simple-install.sh
    ./simple-install.sh
    
-   # Option D: Manual installation
+   # Option E: Manual installation
    curl -O https://raw.githubusercontent.com/dinhdobathi1992/mcp-server-litellm/main/deploy/install.sh
    chmod +x install.sh
    ./install.sh
@@ -176,7 +181,22 @@ sudo systemctl restart mcp-server-litellm
 
 ### Common Issues
 
-1. **MCP Package Installation Error**
+1. **ARM64 MCP Package Installation Error**
+   ```bash
+   # If you see "ERROR: Could not find a version that satisfies the requirement mcp>=1.0.0"
+   # or build dependency errors on ARM64, use the ARM64-specific installation:
+   curl -O https://raw.githubusercontent.com/dinhdobathi1992/mcp-server-litellm/main/deploy/arm64-install.sh
+   chmod +x arm64-install.sh
+   ./arm64-install.sh
+   
+   # Or if you already have a partial installation, use the fix script:
+   cd /opt/mcp-server-litellm
+   curl -O https://raw.githubusercontent.com/dinhdobathi1992/mcp-server-litellm/main/deploy/fix-arm64-current.sh
+   chmod +x fix-arm64-current.sh
+   ./fix-arm64-current.sh
+   ```
+
+2. **MCP Package Installation Error (Non-ARM64)**
    ```bash
    # If you see "ERROR: Could not find a version that satisfies the requirement mcp>=1.0.0"
    # Use the robust installation script:
@@ -191,7 +211,7 @@ sudo systemctl restart mcp-server-litellm
    pip install litellm pydantic python-dotenv httpx
    ```
 
-2. **PyProject.toml Installation Error**
+3. **PyProject.toml Installation Error**
    ```bash
    # If you see "TypeError: Field `project.dependencies` must be an array"
    # Use the simple installation script instead:
