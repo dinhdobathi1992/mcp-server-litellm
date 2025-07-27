@@ -32,8 +32,31 @@ sed -i 's/from mcp.server.stdio import stdio_server/from mcp_compat.stdio import
 sed -i 's/from pydantic import BaseModel/# from pydantic import BaseModel  # Using simple BaseModel/' src/server_litellm/server.py
 
 echo "🔧 Step 2: Installing missing dependencies..."
-# Install all dependencies properly
-pip install pydantic python-dotenv httpx anyio jsonschema pydantic-settings python-multipart sse-starlette starlette uvicorn httpx-sse h2 hyperframe hpack litellm idna certifi urllib3 charset-normalizer typing-extensions
+# Install core dependencies first
+pip install pydantic python-dotenv httpx anyio jsonschema pydantic-settings python-multipart sse-starlette starlette uvicorn httpx-sse h2 hyperframe hpack idna certifi urllib3 charset-normalizer typing-extensions
+
+# Install LiteLLM without problematic dependencies
+echo "Installing LiteLLM without problematic dependencies..."
+if pip install litellm --no-deps; then
+    echo "✅ LiteLLM installed successfully (no deps)"
+else
+    echo "⚠️  LiteLLM installation failed, trying minimal install..."
+    pip install --no-deps litellm
+fi
+
+# Install common dependencies that litellm might need
+echo "Installing common dependencies that might be needed..."
+pip install requests openai anthropic tiktoken
+
+# Try to install tokenizers separately with specific version
+echo "Trying to install tokenizers with specific version..."
+if pip install "tokenizers<0.20.0" --no-deps; then
+    echo "✅ tokenizers installed successfully (older version)"
+elif pip install "tokenizers==0.19.0" --no-deps; then
+    echo "✅ tokenizers installed successfully (specific version)"
+else
+    echo "⚠️  tokenizers installation failed, continuing without it..."
+fi
 
 echo "🔧 Step 3: Creating MCP compatibility layer..."
 # Create MCP compatibility layer if it doesn't exist
