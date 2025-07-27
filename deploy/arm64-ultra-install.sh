@@ -122,7 +122,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import the minimal MCP classes we need
 from .server import Server
-from .types import Tool, TextContent
+from .mcp_types import Tool, TextContent
 from .stdio import stdio_server
 
 __all__ = ['Server', 'Tool', 'TextContent', 'stdio_server']
@@ -133,7 +133,7 @@ cat > mcp_compat/server.py <<'EOF'
 import asyncio
 import json
 from typing import List, Dict, Any, Optional
-from .types import Tool, TextContent
+from .mcp_types import Tool, TextContent
 
 class Server:
     def __init__(self, name: str):
@@ -202,7 +202,7 @@ class Server:
         return {}
 EOF
 
-cat > mcp_compat/types.py <<'EOF'
+cat > mcp_compat/mcp_types.py <<'EOF'
 # Minimal MCP types for ARM64 compatibility
 from typing import Dict, Any, Optional
 
@@ -276,7 +276,7 @@ EOF
 # Update the server.py to use our compatibility layer
 print_status "Updating server to use compatibility layer..."
 sed -i 's/from mcp.server import Server/from mcp_compat.server import Server/' src/server_litellm/server.py
-sed -i 's/from mcp.types import Tool, TextContent/from mcp_compat.types import Tool, TextContent/' src/server_litellm/server.py
+sed -i 's/from mcp.types import Tool, TextContent/from mcp_compat.mcp_types import Tool, TextContent/' src/server_litellm/server.py
 sed -i 's/from mcp.server.stdio import stdio_server/from mcp_compat.stdio import stdio_server/' src/server_litellm/server.py
 
 # Also update any pydantic imports to use our simple version
@@ -295,7 +295,7 @@ fi
 print_status "Testing server functionality..."
 if python -c "
 from mcp_compat.server import Server
-from mcp_compat.types import Tool, TextContent
+from mcp_compat.mcp_types import Tool, TextContent
 server = Server('test')
 print('Server creation test passed')
 "; then

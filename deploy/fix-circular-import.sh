@@ -1,10 +1,10 @@
 #!/bin/bash
-# Fix script for puccinialin dependency error on ARM64
-# Run this if you see the puccinialin error
+# Fix script for circular import error on ARM64
+# Run this if you see the circular import error with types.py
 
 set -e
 
-echo "🔧 Fixing puccinialin dependency error on ARM64..."
+echo "🔧 Fixing circular import error on ARM64..."
 
 # Check if we're in the right directory
 if [ ! -d "/opt/mcp-server-litellm" ]; then
@@ -17,54 +17,16 @@ cd /opt/mcp-server-litellm
 # Activate virtual environment
 source venv/bin/activate
 
-echo "📦 Installing dependencies individually to avoid puccinialin error..."
+echo "🔧 Fixing circular import by renaming types.py..."
 
-# Function to install package with fallback
-install_package() {
-    local package=$1
-    echo "Installing $package..."
-    if pip install "$package" --no-deps; then
-        echo "✅ $package installed successfully"
-    else
-        echo "⚠️  $package failed, skipping..."
-    fi
-}
-
-# Install core dependencies one by one
-install_package "pydantic>=2.0.0"
-install_package "python-dotenv>=0.21.0"
-install_package "httpx>=0.25.0"
-install_package "anyio>=3.0.0"
-
-# Install MCP dependencies
-install_package "jsonschema>=4.20.0"
-install_package "pydantic-settings>=2.5.2"
-install_package "python-multipart>=0.0.9"
-install_package "sse-starlette>=1.6.1"
-install_package "starlette>=0.27.0"
-install_package "uvicorn>=0.23.1"
-install_package "httpx-sse>=0.4.0"
-
-# Install HTTP/2 support
-install_package "h2>=3.0.0"
-install_package "hyperframe>=6.1.0"
-install_package "hpack>=4.1.0"
-
-# Install LiteLLM with minimal dependencies
-echo "Installing LiteLLM..."
-if pip install "litellm>=0.1.0" --no-deps; then
-    echo "✅ LiteLLM installed successfully"
-else
-    echo "⚠️  LiteLLM installation failed, trying minimal install..."
-    pip install --no-deps litellm
+# Rename types.py to mcp_types.py to avoid conflict with Python's built-in types module
+if [ -f "mcp_compat/types.py" ]; then
+    mv mcp_compat/types.py mcp_compat/mcp_types.py
+    echo "✅ Renamed types.py to mcp_types.py"
 fi
 
-# Create MCP compatibility layer if it doesn't exist
-if [ ! -d "mcp_compat" ]; then
-    echo "🔧 Creating MCP compatibility layer..."
-    mkdir -p mcp_compat
-
-    cat > mcp_compat/__init__.py <<'EOF'
+# Update the __init__.py file to import from mcp_types
+cat > mcp_compat/__init__.py <<'EOF'
 # Minimal MCP compatibility layer for ARM64
 import sys
 import os
@@ -80,7 +42,8 @@ from .stdio import stdio_server
 __all__ = ['Server', 'Tool', 'TextContent', 'stdio_server']
 EOF
 
-    cat > mcp_compat/server.py <<'EOF'
+# Update the server.py file to import from mcp_types
+cat > mcp_compat/server.py <<'EOF'
 # Minimal MCP Server implementation for ARM64 compatibility
 import asyncio
 import json
@@ -154,7 +117,8 @@ class Server:
         return {}
 EOF
 
-    cat > mcp_compat/mcp_types.py <<'EOF'
+# Create the mcp_types.py file with the correct content
+cat > mcp_compat/mcp_types.py <<'EOF'
 # Minimal MCP types for ARM64 compatibility
 from typing import Dict, Any, Optional
 
@@ -189,7 +153,8 @@ class TextContent(BaseModel):
         }
 EOF
 
-    cat > mcp_compat/stdio.py <<'EOF'
+# Update the stdio.py file (no changes needed, but ensure it exists)
+cat > mcp_compat/stdio.py <<'EOF'
 # Minimal stdio server for ARM64 compatibility
 import asyncio
 import sys
@@ -225,13 +190,12 @@ async def stdio_server() -> Tuple[AsyncGenerator[bytes, None], asyncio.StreamWri
     return read_stream(), writer
 EOF
 
-    # Update the server.py to use our compatibility layer
-    echo "🔧 Updating server imports..."
-    sed -i 's/from mcp.server import Server/from mcp_compat.server import Server/' src/server_litellm/server.py
-    sed -i 's/from mcp.types import Tool, TextContent/from mcp_compat.mcp_types import Tool, TextContent/' src/server_litellm/server.py
-    sed -i 's/from mcp.server.stdio import stdio_server/from mcp_compat.stdio import stdio_server/' src/server_litellm/server.py
-    sed -i 's/from pydantic import BaseModel/# from pydantic import BaseModel  # Using simple BaseModel/' src/server_litellm/server.py
-fi
+# Update the server.py to use our compatibility layer
+echo "🔧 Updating server imports..."
+sed -i 's/from mcp.server import Server/from mcp_compat.server import Server/' src/server_litellm/server.py
+sed -i 's/from mcp.types import Tool, TextContent/from mcp_compat.mcp_types import Tool, TextContent/' src/server_litellm/server.py
+sed -i 's/from mcp.server.stdio import stdio_server/from mcp_compat.stdio import stdio_server/' src/server_litellm/server.py
+sed -i 's/from pydantic import BaseModel/# from pydantic import BaseModel  # Using simple BaseModel/' src/server_litellm/server.py
 
 # Test the installation
 echo "🧪 Testing installation..."
@@ -256,6 +220,20 @@ else
     exit 1
 fi
 
+# Test the actual server module
+echo "🧪 Testing server module..."
+if python -c "
+import sys
+sys.path.append('src')
+from server_litellm.server import _handle_completion, _handle_list_models
+print('Server module test passed')
+"; then
+    echo "✅ Server module test passed"
+else
+    echo "❌ Server module test failed"
+    exit 1
+fi
+
 # Restart the service
 echo "🔄 Restarting MCP service..."
 sudo systemctl restart mcp-server-litellm
@@ -272,14 +250,13 @@ else
 fi
 
 echo ""
-echo "🎉 Puccinialin error fix completed!"
-echo "=================================="
+echo "🎉 Circular import fix completed!"
+echo "================================"
 echo ""
-echo "📋 Your MCP server should now be working with the compatibility layer."
+echo "📋 Your MCP server should now be working without circular import errors."
 echo "🔧 Useful Commands:"
 echo "Check status: sudo systemctl status mcp-server-litellm"
 echo "View logs: sudo journalctl -u mcp-server-litellm -f"
 echo "Restart: sudo systemctl restart mcp-server-litellm"
 echo ""
-echo "ℹ️  Note: This uses a custom MCP compatibility layer for ARM64 support."
-echo "Some dependencies may have been skipped if they failed to install." 
+echo "ℹ️  Note: Fixed the circular import by renaming types.py to mcp_types.py" 
