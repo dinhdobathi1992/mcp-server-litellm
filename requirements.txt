@@ -1,12 +1,27 @@
-# Core dependencies
-mcp>=1.0.0
-litellm>=0.1.0
+# Core dependencies - install these first
 pydantic>=2.0.0
 python-dotenv>=0.21.0
+httpx>=0.25.0
+anyio>=3.0.0
+jsonschema>=4.20.0
+pydantic-settings>=2.5.2
+python-multipart>=0.0.9
+sse-starlette>=1.6.1
+starlette>=0.27.0
+uvicorn>=0.23.1
+httpx-sse>=0.4.0
 
-# HTTP client with HTTP/2 support
-httpx[http2]>=0.25.0
+# MCP package - try different sources if needed
+# If this fails, install from GitHub: pip install git+https://github.com/modelcontextprotocol/python-sdk.git
+mcp>=1.0.0
 
-# Additional dependencies that might be needed
-asyncio
-typing-extensions 
+# LiteLLM
+litellm>=0.1.0
+
+# HTTP/2 support
+h2>=3.0.0
+hyperframe>=6.1.0
+hpack>=4.1.0
+
+# Additional dependencies
+typing-extensions>=4.0.0 

@@ -13,17 +13,22 @@ This guide explains how to deploy the LiteLLM MCP server on an Ubuntu ARM64 serv
 
 2. **Run the installation script:**
    ```bash
-   # Option A: Quick setup (recommended)
+   # Option A: Robust installation (recommended for ARM64)
+   curl -O https://raw.githubusercontent.com/dinhdobathi1992/mcp-server-litellm/main/deploy/robust-install.sh
+   chmod +x robust-install.sh
+   ./robust-install.sh
+   
+   # Option B: Quick setup
    curl -O https://raw.githubusercontent.com/dinhdobathi1992/mcp-server-litellm/main/deploy/quick-setup.sh
    chmod +x quick-setup.sh
    ./quick-setup.sh
    
-   # Option B: Simple installation (if Option A fails)
+   # Option C: Simple installation (if others fail)
    curl -O https://raw.githubusercontent.com/dinhdobathi1992/mcp-server-litellm/main/deploy/simple-install.sh
    chmod +x simple-install.sh
    ./simple-install.sh
    
-   # Option C: Manual installation
+   # Option D: Manual installation
    curl -O https://raw.githubusercontent.com/dinhdobathi1992/mcp-server-litellm/main/deploy/install.sh
    chmod +x install.sh
    ./install.sh
@@ -171,7 +176,22 @@ sudo systemctl restart mcp-server-litellm
 
 ### Common Issues
 
-1. **PyProject.toml Installation Error**
+1. **MCP Package Installation Error**
+   ```bash
+   # If you see "ERROR: Could not find a version that satisfies the requirement mcp>=1.0.0"
+   # Use the robust installation script:
+   curl -O https://raw.githubusercontent.com/dinhdobathi1992/mcp-server-litellm/main/deploy/robust-install.sh
+   chmod +x robust-install.sh
+   ./robust-install.sh
+   
+   # Or install manually from GitHub:
+   cd /opt/mcp-server-litellm
+   source venv/bin/activate
+   pip install git+https://github.com/modelcontextprotocol/python-sdk.git
+   pip install litellm pydantic python-dotenv httpx
+   ```
+
+2. **PyProject.toml Installation Error**
    ```bash
    # If you see "TypeError: Field `project.dependencies` must be an array"
    # Use the simple installation script instead:
