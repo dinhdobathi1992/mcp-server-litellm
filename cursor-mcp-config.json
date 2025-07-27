@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "litellm-server": {
+      "command": "python",
+      "args": ["-m", "server_litellm"],
+      "cwd": "/Users/thi/workspaces/mcp-server-litellm",
+      "env": {
+        "LITELLM_PROXY_URL": "https://litellm.shared-services.adb.adi.tech",
+        "LITELLM_API_KEY": "sk-jhBs4H8kSBGagA7e179rkw"
+      }
+    }
+  }
+} 

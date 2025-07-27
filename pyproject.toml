@@ -1,0 +1,19 @@
+[project]
+name = "mcp-server-litellm"
+version = "0.1.0"
+description = "An MCP server for LiteLLM integration"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[project.dependencies]
+mcp = ">=1.0.0"
+litellm = ">=0.1.0"
+pydantic = ">=2.0.0"
+python-dotenv = ">=0.21.0"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+mcp-server-litellm = "server_litellm"
