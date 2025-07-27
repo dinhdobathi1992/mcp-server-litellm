@@ -13,7 +13,17 @@ This guide explains how to deploy the LiteLLM MCP server on an Ubuntu ARM64 serv
 
 2. **Run the installation script:**
    ```bash
-   # Download the installation script
+   # Option A: Quick setup (recommended)
+   curl -O https://raw.githubusercontent.com/dinhdobathi1992/mcp-server-litellm/main/deploy/quick-setup.sh
+   chmod +x quick-setup.sh
+   ./quick-setup.sh
+   
+   # Option B: Simple installation (if Option A fails)
+   curl -O https://raw.githubusercontent.com/dinhdobathi1992/mcp-server-litellm/main/deploy/simple-install.sh
+   chmod +x simple-install.sh
+   ./simple-install.sh
+   
+   # Option C: Manual installation
    curl -O https://raw.githubusercontent.com/dinhdobathi1992/mcp-server-litellm/main/deploy/install.sh
    chmod +x install.sh
    ./install.sh
@@ -161,7 +171,21 @@ sudo systemctl restart mcp-server-litellm
 
 ### Common Issues
 
-1. **SSH Connection Fails**
+1. **PyProject.toml Installation Error**
+   ```bash
+   # If you see "TypeError: Field `project.dependencies` must be an array"
+   # Use the simple installation script instead:
+   curl -O https://raw.githubusercontent.com/dinhdobathi1992/mcp-server-litellm/main/deploy/simple-install.sh
+   chmod +x simple-install.sh
+   ./simple-install.sh
+   
+   # Or install manually with requirements.txt:
+   cd /opt/mcp-server-litellm
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+2. **SSH Connection Fails**
    ```bash
    # Test SSH connection
    ssh -v mcp-user@your-server-ip

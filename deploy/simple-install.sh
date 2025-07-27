@@ -1,21 +1,19 @@
 #!/bin/bash
-# Installation script for LiteLLM MCP Server on Ubuntu ARM64
-# Run this script on your Ubuntu server
+# Simple installation script for LiteLLM MCP server on Ubuntu ARM64
+# This script avoids pyproject.toml issues by using requirements.txt
 
 set -e
 
-echo "🚀 Installing LiteLLM MCP Server on Ubuntu ARM64..."
+echo "🚀 Simple LiteLLM MCP Server Installation"
+echo "=========================================="
 
 # Update system
 echo "📦 Updating system packages..."
 sudo apt update && sudo apt upgrade -y
 
-# Install Python 3.11+ and pip
+# Install Python and dependencies
 echo "🐍 Installing Python and dependencies..."
-sudo apt install -y python3 python3-pip python3-venv git curl wget
-
-# Install build dependencies
-sudo apt install -y build-essential python3-dev
+sudo apt install -y python3 python3-pip python3-venv git curl wget build-essential python3-dev
 
 # Create application directory
 echo "📁 Setting up application directory..."
@@ -23,26 +21,19 @@ sudo mkdir -p /opt/mcp-server-litellm
 sudo chown $USER:$USER /opt/mcp-server-litellm
 cd /opt/mcp-server-litellm
 
-# Clone the repository (or copy files)
+# Clone the repository
 echo "📥 Cloning repository..."
 git clone https://github.com/dinhdobathi1992/mcp-server-litellm.git .
-# Or if you want to copy files manually:
-# scp -r /path/to/your/local/mcp-server-litellm/* user@server:/opt/mcp-server-litellm/
 
 # Create virtual environment
 echo "🔧 Setting up Python virtual environment..."
 python3 -m venv venv
 source venv/bin/activate
 
-# Install dependencies
+# Install dependencies using requirements.txt
 echo "📦 Installing Python dependencies..."
 pip install --upgrade pip
-
-# Try installing with editable install first, fallback to requirements.txt
-if ! pip install -e .; then
-    echo "⚠️  Editable install failed, trying with requirements.txt..."
-    pip install -r requirements.txt
-fi
+pip install -r requirements.txt
 
 # Create environment file
 echo "⚙️ Setting up environment configuration..."
@@ -75,12 +66,12 @@ sudo systemctl daemon-reload
 sudo systemctl enable mcp-server-litellm
 sudo systemctl start mcp-server-litellm
 
-# Create firewall rules (if using ufw)
+# Create firewall rules
 echo "🔥 Setting up firewall rules..."
-sudo ufw allow 8000/tcp  # If you want to expose HTTP API
+sudo ufw allow 8000/tcp
 sudo ufw reload
 
-echo "✅ Installation complete!"
+echo "✅ Simple installation complete!"
 echo ""
 echo "📋 Next steps:"
 echo "1. Edit /opt/mcp-server-litellm/.env with your API keys"

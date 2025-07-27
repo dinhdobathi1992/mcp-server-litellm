@@ -76,7 +76,12 @@ source venv/bin/activate
 # Install Python dependencies
 print_status "Installing Python dependencies..."
 pip install --upgrade pip
-pip install -e .
+
+# Try installing with editable install first, fallback to requirements.txt
+if ! pip install -e .; then
+    print_warning "Editable install failed, trying with requirements.txt..."
+    pip install -r requirements.txt
+fi
 
 # Create environment file
 print_status "Setting up environment configuration..."
