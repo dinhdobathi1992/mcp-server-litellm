@@ -78,6 +78,50 @@ The server provides two main tools:
 }
 ```
 
+## Performance Optimization
+
+The MCP server includes several performance optimizations to improve response speed:
+
+### HTTP Client Optimizations
+- **Connection Pooling**: Reuses HTTP connections for faster subsequent requests
+- **HTTP/2 Support**: Enabled by default for better performance
+- **Configurable Timeouts**: Adjustable connection and request timeouts
+- **Keep-Alive Connections**: Maintains persistent connections
+
+### Performance Configuration
+You can tune performance settings via environment variables:
+
+```bash
+# HTTP Client Settings
+HTTP_TIMEOUT=30.0                    # Request timeout in seconds
+HTTP_CONNECT_TIMEOUT=10.0            # Connection timeout in seconds
+HTTP_MAX_KEEPALIVE_CONNECTIONS=20    # Max keep-alive connections
+HTTP_MAX_CONNECTIONS=100             # Max total connections
+HTTP_ENABLE_HTTP2=true               # Enable HTTP/2
+
+# Performance Monitoring
+LOG_PERFORMANCE_METRICS=true         # Enable performance logging
+LOG_SLOW_QUERIES_THRESHOLD=5.0       # Log requests slower than 5 seconds
+```
+
+### Streaming Support
+Enable streaming for faster perceived response times:
+```python
+{
+    "model": "gpt-4o",
+    "messages": [{"role": "user", "content": "Hello"}],
+    "stream": true  # Enable streaming
+}
+```
+
+### Performance Testing
+Run the performance test suite to benchmark your setup:
+```bash
+python test_performance.py
+```
+
+This will test response times across different models and query types, providing detailed performance metrics and optimization recommendations.
+
 ## Testing
 
 ### Quick Test
@@ -88,6 +132,11 @@ python example_usage.py
 ### Comprehensive Test Suite
 ```bash
 python test_completion.py
+```
+
+### Performance Testing
+```bash
+python test_performance.py
 ```
 
 ### Interactive Testing

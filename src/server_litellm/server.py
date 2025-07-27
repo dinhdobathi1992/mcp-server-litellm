@@ -24,6 +24,24 @@ LITELLM_PROXY_URL = os.environ.get("LITELLM_PROXY_URL", "http://localhost:4000")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")  # Optional if using proxy
 LITELLM_API_KEY = os.environ.get("LITELLM_API_KEY")  # Optional for proxy authentication
 
+# Performance optimization: Create a reusable HTTP client with connection pooling
+try:
+    # Try to enable HTTP/2 for better performance
+    HTTP_CLIENT = httpx.AsyncClient(
+        timeout=httpx.Timeout(30.0, connect=10.0),
+        limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
+        http2=True  # Enable HTTP/2 for better performance
+    )
+    logger.info("HTTP/2 support enabled for better performance")
+except ImportError:
+    # Fallback to HTTP/1.1 if HTTP/2 is not available
+    HTTP_CLIENT = httpx.AsyncClient(
+        timeout=httpx.Timeout(30.0, connect=10.0),
+        limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
+        http2=False
+    )
+    logger.info("HTTP/2 not available, using HTTP/1.1")
+
 # Set up LiteLLM configuration for proxy
 if LITELLM_PROXY_URL:
     os.environ["OPENAI_API_BASE"] = f"{LITELLM_PROXY_URL}/v1"
@@ -79,6 +97,11 @@ async def list_tools() -> List[Tool]:
                         "type": "integer",
                         "description": "Maximum number of tokens to generate.",
                         "default": 1000
+                    },
+                    "stream": {
+                        "type": "boolean",
+                        "description": "Enable streaming for faster initial response.",
+                        "default": False
                     }
                 },
                 "required": ["model", "messages"]
@@ -109,7 +132,7 @@ async def call_tool(name: str, arguments: dict) -> List[TextContent]:
 
 async def _handle_completion(arguments: dict) -> List[TextContent]:
     """
-    Handle completion requests.
+    Handle completion requests with performance optimizations.
     """
     try:
         # Extract and validate arguments
@@ -117,6 +140,7 @@ async def _handle_completion(arguments: dict) -> List[TextContent]:
         messages = arguments.get("messages", [])
         temperature = arguments.get("temperature", 0.7)
         max_tokens = arguments.get("max_tokens", 1000)
+        stream = arguments.get("stream", False)
 
         if not model:
             raise ValueError("Model parameter is required")
@@ -134,14 +158,15 @@ async def _handle_completion(arguments: dict) -> List[TextContent]:
                 raise ValueError(f"Each message must have 'role' and 'content'. Invalid message: {message}")
 
         # Log the input arguments for debugging
-        logger.info(f"Model: {model}, Messages count: {len(messages)}, Temperature: {temperature}")
+        logger.info(f"Model: {model}, Messages count: {len(messages)}, Temperature: {temperature}, Stream: {stream}")
 
         # Prepare completion parameters
         completion_params = {
             "model": model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens
+            "max_tokens": max_tokens,
+            "stream": stream
         }
 
         # Add API key if available - ensure it's set in environment for LiteLLM
@@ -154,7 +179,7 @@ async def _handle_completion(arguments: dict) -> List[TextContent]:
 
         # Call completion - use direct proxy call for Claude models to avoid Bedrock routing
         if model.startswith("anthropic.claude"):
-            response = await _call_proxy_direct(model, messages, temperature, max_tokens)
+            response = await _call_proxy_direct(model, messages, temperature, max_tokens, stream)
         else:
             response = completion(**completion_params)
 
@@ -177,15 +202,16 @@ async def _handle_completion(arguments: dict) -> List[TextContent]:
         logger.error(f"Error during LiteLLM completion: {e}")
         raise RuntimeError(f"LLM API error: {e}")
 
-async def _call_proxy_direct(model: str, messages: List[dict], temperature: float, max_tokens: int) -> dict:
+async def _call_proxy_direct(model: str, messages: List[dict], temperature: float, max_tokens: int, stream: bool = False) -> dict:
     """
-    Call the LiteLLM proxy directly for Claude models to avoid Bedrock routing.
+    Call the LiteLLM proxy directly for Claude models with performance optimizations.
     """
     payload = {
         "model": model,
         "messages": messages,
         "temperature": temperature,
-        "max_tokens": max_tokens
+        "max_tokens": max_tokens,
+        "stream": stream
     }
     
     headers = {
@@ -194,19 +220,18 @@ async def _call_proxy_direct(model: str, messages: List[dict], temperature: floa
     }
     
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{LITELLM_PROXY_URL}/v1/chat/completions",
-                json=payload,
-                headers=headers,
-                timeout=60.0
-            )
+        # Use the reusable HTTP client for better performance
+        response = await HTTP_CLIENT.post(
+            f"{LITELLM_PROXY_URL}/v1/chat/completions",
+            json=payload,
+            headers=headers
+        )
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise RuntimeError(f"Proxy error: {response.status_code} - {response.text}")
             
-            if response.status_code == 200:
-                return response.json()
-            else:
-                raise RuntimeError(f"Proxy error: {response.status_code} - {response.text}")
-                
     except Exception as e:
         logger.error(f"Error calling proxy directly: {e}")
         raise RuntimeError(f"Proxy call error: {e}")
@@ -233,8 +258,12 @@ async def run_server():
     logger.info(f"Proxy URL: {LITELLM_PROXY_URL}")
     logger.info(f"Supported models: {', '.join(SUPPORTED_MODELS)}")
     
-    async with stdio_server() as (read_stream, write_stream):
-        await app.run(read_stream, write_stream, app.create_initialization_options())
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            await app.run(read_stream, write_stream, app.create_initialization_options())
+    finally:
+        # Clean up the HTTP client when the server shuts down
+        await HTTP_CLIENT.aclose()
 
 def main():
     """
