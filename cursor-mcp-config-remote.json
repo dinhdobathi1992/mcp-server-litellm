@@ -1,0 +1,30 @@
+{
+  "mcpServers": {
+    "litellm-remote": {
+      "command": "ssh",
+      "args": [
+        "-L", "8000:localhost:8000",
+        "-o", "Compression=yes",
+        "-o", "ServerAliveInterval=60",
+        "-o", "ServerAliveCountMax=3",
+        "mcp-user@YOUR_SERVER_IP",
+        "cd /opt/mcp-server-litellm && source venv/bin/activate && python -m server_litellm"
+      ],
+      "env": {
+        "LITELLM_PROXY_URL": "https://litellm.shared-services.adb.adi.tech",
+        "LITELLM_API_KEY": "sk-jhBs4H8kSBGagA7e179rkw"
+      }
+    },
+    "litellm-remote-direct": {
+      "command": "ssh",
+      "args": [
+        "mcp-user@YOUR_SERVER_IP",
+        "cd /opt/mcp-server-litellm && source venv/bin/activate && python -m server_litellm"
+      ],
+      "env": {
+        "LITELLM_PROXY_URL": "https://litellm.shared-services.adb.adi.tech",
+        "LITELLM_API_KEY": "sk-jhBs4H8kSBGagA7e179rkw"
+      }
+    }
+  }
+} 
