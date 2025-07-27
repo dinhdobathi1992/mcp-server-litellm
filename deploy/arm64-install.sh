@@ -64,11 +64,34 @@ pip install jsonschema>=4.20.0 pydantic-settings>=2.5.2 python-multipart>=0.0.9 
 
 # Install HTTP/2 support
 print_status "Installing HTTP/2 support..."
-pip install h2>=3.0.0 hyperframe>=6.1.0 hpack>=4.1.0
+pip install h2>=3.0.0 hyperframe>=6.0.0 hpack>=4.0.0
 
-# Install LiteLLM
-print_status "Installing LiteLLM..."
-pip install litellm>=0.1.0
+# Install common missing dependencies
+print_status "Installing common missing dependencies..."
+pip install idna certifi urllib3 charset-normalizer typing-extensions
+
+# Install LiteLLM without problematic dependencies
+print_status "Installing LiteLLM without problematic dependencies..."
+if pip install litellm>=0.1.0 --no-deps; then
+    print_status "LiteLLM installed successfully (no deps)"
+else
+    print_warning "LiteLLM installation failed, trying minimal install..."
+    pip install --no-deps litellm
+fi
+
+# Install common dependencies that litellm might need
+print_status "Installing common dependencies that might be needed..."
+pip install requests openai anthropic tiktoken
+
+# Try to install tokenizers separately with specific version
+print_status "Trying to install tokenizers with specific version..."
+if pip install "tokenizers<0.20.0" --no-deps; then
+    print_status "tokenizers installed successfully (older version)"
+elif pip install "tokenizers==0.19.0" --no-deps; then
+    print_status "tokenizers installed successfully (specific version)"
+else
+    print_warning "tokenizers installation failed, continuing without it..."
+fi
 
 # Create a minimal MCP compatibility layer
 print_status "Creating MCP compatibility layer..."
